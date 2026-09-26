@@ -1,0 +1,9 @@
+# Remote base for a scheduled job that runs the app's own image, replacing a
+# Heroku Scheduler entry. See README.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - cronjob.yaml
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: argocd

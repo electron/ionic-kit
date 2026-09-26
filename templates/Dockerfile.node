@@ -1,0 +1,44 @@
+# Node 22 + Yarn 4 service for ionic. Copy to ./Dockerfile and adjust the
+# marked lines.
+#
+# Assumes package.json sets `"packageManager": "yarn@4.x.y"` (corepack reads
+# it) and has a `build` script that outputs to lib/. Expects Yarn 4 with the
+# node-modules linker.
+
+FROM node:22-alpine AS build
+WORKDIR /app
+RUN corepack enable
+COPY package.json yarn.lock .yarnrc.yml ./
+# Drop this line (and its twin in the runtime stage) if the repo has no .yarn/
+# directory, i.e. no vendored Yarn release or plugins.
+COPY .yarn/ ./.yarn/
+RUN yarn install --immutable
+COPY tsconfig.json ./
+COPY src/ ./src/
+RUN yarn build
+
+FROM node:22-alpine
+WORKDIR /app
+# tzdata is only needed if the app sets TZ. Add `git` here if the app shells
+# out to it.
+RUN apk add --no-cache tzdata \
+ && corepack enable
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn/ ./.yarn/
+# Production deps only; `focus` also works on a single-workspace repo.
+RUN yarn workspaces focus --all --production \
+ && yarn cache clean
+COPY --from=build /app/lib ./lib
+
+# The cluster runs pods as uid/gid 1000 with a read-only root filesystem and a
+# writable emptyDir at /tmp. HOME=/tmp keeps anything that writes to $HOME at
+# runtime (git config, npm, corepack) off the read-only layers.
+USER 1000:1000
+ENV NODE_ENV=production \
+    PORT=8080 \
+    HOME=/tmp
+EXPOSE 8080
+# No HEALTHCHECK: Kubernetes probes /healthz instead (the path can be changed
+# in the overlay). For probot apps, use
+# CMD ["yarn", "probot", "run", "./lib/index.js"]; probot reads PORT.
+CMD ["node", "lib/index.js"]

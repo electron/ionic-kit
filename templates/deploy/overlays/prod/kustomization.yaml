@@ -1,0 +1,37 @@
+# Copy to deploy/overlays/prod/kustomization.yaml (the `deploy_path` in the
+# app's infra entry). Replace the hostname; everything else is optional.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+replicas:
+  - name: server
+    count: 1
+patches:
+  - target:
+      kind: Ingress
+      name: server
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: my-app.electronjs.org
+  # Optional: a health endpoint other than /healthz, plain (non-secret) env
+  # vars and resource limits. Delete whatever you don't need.
+  - target:
+      kind: Deployment
+      name: server
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe/httpGet/path
+        value: /healthz
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe/httpGet/path
+        value: /healthz
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value: { name: LOG_LEVEL, value: info }
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: { cpu: 50m, memory: 128Mi }
+          limits: { memory: 256Mi }

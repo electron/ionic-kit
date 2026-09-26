@@ -1,0 +1,25 @@
+# Renders both bases through relative paths so the kit's CI can build them
+# without fetching this repo over git. The output matches what templates/deploy
+# produces for an app named `example` with one nightly cron.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: example
+resources:
+  - ../../node-web-app
+  - cron-nightly
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: example
+    includeTemplates: true
+images:
+  - name: electronionicplatform.azurecr.io/PLACEHOLDER_APP
+    newName: electronionicplatform.azurecr.io/example
+    newTag: main
+patches:
+  - target:
+      kind: Ingress
+      name: server
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: example.electronjs.org

@@ -1,0 +1,193 @@
+# Reusable build-and-deploy for apps on the ionic platform.
+#
+# Callers copy templates/build-image.yml, pass their ArgoCD app name and the
+# four Terraform-managed repo secrets, and pin this file by commit SHA.
+#
+# Build job:  OIDC login to Azure -> `az acr login` -> buildx push of
+#             <image>:<sha> and <image>:<branch> with the GHA layer cache.
+# Deploy job: OIDC login -> read the ArgoCD Cloudflare Access service token
+#             from the shared Key Vault -> pinned argocd CLI -> sync git HEAD,
+#             set the kustomize image to <image>:<sha>, wait for healthy.
+#
+# Nothing in this file is secret. The ACR name is an identifier, not a
+# credential, and the ArgoCD hostname and shared vault name come in as inputs
+# from the caller's repo variables. Callers pass secrets by name (never
+# `secrets: inherit`).
+name: Deploy to ionic
+
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: ArgoCD Application name. Must match the app's entry in infra's ionic-platform-apps.
+        required: true
+        type: string
+      image:
+        description: Full image repository. Defaults to electronionicplatform.azurecr.io/<app>.
+        required: false
+        type: string
+        default: ''
+      dockerfile:
+        description: Path to the Dockerfile, relative to `context`.
+        required: false
+        type: string
+        default: ./Dockerfile
+      context:
+        description: Docker build context.
+        required: false
+        type: string
+        default: .
+      platforms:
+        description: buildx target platforms.
+        required: false
+        type: string
+        default: linux/amd64
+      argocd_server:
+        description: ArgoCD API hostname. Pass `vars.ARGOCD_SERVER` (Terraform-managed).
+        required: true
+        type: string
+      shared_vault:
+        description: Shared Key Vault holding the ArgoCD CF Access token. Pass `vars.IONIC_SHARED_VAULT`.
+        required: true
+        type: string
+      deploy:
+        description: Set false to build and push only (no ArgoCD sync).
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      AZURE_ACR_PUSH_CLIENT_ID:
+        description: Client ID of the app's CI-push identity (Terraform-managed).
+        required: true
+      IONIC_PLATFORM_AZURE_TENANT_ID:
+        required: true
+      IONIC_PLATFORM_AZURE_SUBSCRIPTION_ID:
+        required: true
+      ARGOCD_TOKEN:
+        description: API token for the `<app>-ci` ArgoCD account (Terraform-managed).
+        required: true
+
+permissions: {}
+
+env:
+  ACR_NAME: electronionicplatform
+  # `default:` cannot reference other inputs, so the fallback lives here.
+  IMAGE: ${{ inputs.image != '' && inputs.image || format('electronionicplatform.azurecr.io/{0}', inputs.app) }}
+
+jobs:
+  build:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read # checkout
+      id-token: write # azure/login OIDC
+    steps:
+      # actions/checkout v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      # docker/setup-buildx-action v4.0.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      # azure/login v3.0.0. Logs in with the OIDC federated credential on the
+      # app's CI-push identity; there is no client secret.
+      - name: Azure login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43
+        with:
+          client-id: ${{ secrets.AZURE_ACR_PUSH_CLIENT_ID }}
+          tenant-id: ${{ secrets.IONIC_PLATFORM_AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.IONIC_PLATFORM_AZURE_SUBSCRIPTION_ID }}
+      - name: Log in to ACR
+        run: az acr login --name "$ACR_NAME"
+      # docker/build-push-action v7.0.0
+      - name: Build and push
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:${{ github.ref_name }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Set ArgoCD image
+    runs-on: ubuntu-latest
+    needs: build
+    # Only the default branch deploys; other refs just build and push an image.
+    # The job is also skipped when the server or vault input is empty, which
+    # means Terraform hasn't run for this repo yet.
+    if: >-
+      inputs.deploy
+      && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      && inputs.argocd_server != ''
+      && inputs.shared_vault != ''
+    concurrency:
+      group: ${{ inputs.app }}-deploy
+      cancel-in-progress: false
+    timeout-minutes: 20
+    permissions:
+      id-token: write # azure/login OIDC
+    env:
+      ARGOCD_APP: ${{ inputs.app }}
+      ARGOCD_SERVER: ${{ inputs.argocd_server }}
+      ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+    steps:
+      # azure/login v3.0.0 — same pin as the build job.
+      - name: Azure login (OIDC)
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43
+        with:
+          client-id: ${{ secrets.AZURE_ACR_PUSH_CLIENT_ID }}
+          tenant-id: ${{ secrets.IONIC_PLATFORM_AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.IONIC_PLATFORM_AZURE_SUBSCRIPTION_ID }}
+      # The CI-push identity has `Key Vault Secrets User` on exactly these two
+      # secrets. Rotating them in the vault takes effect on the next run.
+      - name: Fetch ArgoCD CF Access token from Key Vault
+        env:
+          VAULT: ${{ inputs.shared_vault }}
+        run: |
+          set -euo pipefail
+          cf_id="$(az keyvault secret show --vault-name "$VAULT" --name argocd-cf-access-client-id --query value -o tsv)"
+          cf_secret="$(az keyvault secret show --vault-name "$VAULT" --name argocd-cf-access-client-secret --query value -o tsv)"
+          echo "::add-mask::$cf_id"
+          echo "::add-mask::$cf_secret"
+          echo "CF_ACCESS_CLIENT_ID=$cf_id" >> "$GITHUB_ENV"
+          echo "CF_ACCESS_CLIENT_SECRET=$cf_secret" >> "$GITHUB_ENV"
+      # Pinned by version and sha256. Update both together when bumping.
+      - name: Install argocd CLI
+        env:
+          ARGOCD_VERSION: v3.3.6
+          ARGOCD_SHA256: 36c243afeb46bbaedec3c9b6823c043a741a36b1b8215147676bb8f18f21ef73
+        run: |
+          curl -fsSL -o /usr/local/bin/argocd \
+            "https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64"
+          echo "${ARGOCD_SHA256}  /usr/local/bin/argocd" | sha256sum -c -
+          chmod +x /usr/local/bin/argocd
+      # Sync manifest changes from deploy/ first, so the image bump below lands
+      # on top of the current git HEAD instead of racing it.
+      - name: Sync to git HEAD before image bump
+        run: |
+          argocd app sync "$ARGOCD_APP" --grpc-web \
+            --header "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+            --header "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+          argocd app wait "$ARGOCD_APP" --grpc-web \
+            --header "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+            --header "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
+            --sync --health --timeout 600
+      # Terraform manages the Application but leaves spec.source.kustomize to
+      # the server, so neither git nor Terraform reverts this override.
+      - name: Set image and wait for sync
+        run: |
+          argocd app set "$ARGOCD_APP" --grpc-web \
+            --header "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+            --header "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
+            --kustomize-image "${IMAGE}=${IMAGE}:${GITHUB_SHA}"
+          argocd app wait "$ARGOCD_APP" --grpc-web \
+            --header "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+            --header "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
+            --sync --health --timeout 600

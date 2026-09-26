@@ -1,0 +1,56 @@
+# The kit's own checks: lint the workflows, render every kustomize base.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  workflows:
+    name: Lint workflows
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v6.0.2 — same pin as deploy.yml.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      # actionlint checks syntax and expression types, and runs shellcheck on
+      # `run:` blocks. <pin-me>: replace with the image digest for
+      # rhysd/actionlint:1.7.7.
+      - name: actionlint
+        run: |
+          docker run --rm -v "${GITHUB_WORKSPACE}:/repo" -w /repo \
+            rhysd/actionlint:1.7.7@sha256:<pin-me> -color
+      # zizmor audits the workflows for security issues (unpinned actions,
+      # template injection, persisted credentials). <pin-me>: replace with the
+      # commit SHA of the zizmorcore/zizmor-action release you adopt, with the
+      # tag in a comment.
+      - name: zizmor
+        uses: zizmorcore/zizmor-action@<pin-me> # vX.Y.Z
+        with:
+          advanced-security: false # print findings; no SARIF upload
+
+  kustomize:
+    name: Render kustomize
+    runs-on: ubuntu-latest
+    steps:
+      # actions/checkout v6.0.2 — same pin as deploy.yml.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          persist-credentials: false
+      # kubectl ships on ubuntu-latest and bundles kustomize v5.
+      - name: Render the bases through the local example overlay
+        run: kubectl kustomize kustomize/examples/local-overlay
+      # The template base references this repo by URL and `<sha>`, which can't
+      # resolve to a PR's changes. Point it at the checkout instead and render
+      # the same overlay an app would copy.
+      - name: Render templates/deploy against this checkout
+        run: |
+          sed -i 's#https://github.com/electron/ionic-kit//kustomize/node-web-app?ref=[^ ]*#../../../kustomize/node-web-app#' \
+            templates/deploy/base/kustomization.yaml
+          kubectl kustomize templates/deploy/overlays/prod
+          git checkout -- templates/deploy/base/kustomization.yaml
