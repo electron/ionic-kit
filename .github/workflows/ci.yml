@@ -19,18 +19,16 @@ jobs:
         with:
           persist-credentials: false
       # actionlint checks syntax and expression types, and runs shellcheck on
-      # `run:` blocks. <pin-me>: replace with the image digest for
-      # rhysd/actionlint:1.7.7.
+      # `run:` blocks. Pinned by tag and multi-arch image digest; update both
+      # together when bumping.
       - name: actionlint
         run: |
           docker run --rm -v "${GITHUB_WORKSPACE}:/repo" -w /repo \
-            rhysd/actionlint:1.7.7@sha256:<pin-me> -color
+            rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
       # zizmor audits the workflows for security issues (unpinned actions,
-      # template injection, persisted credentials). <pin-me>: replace with the
-      # commit SHA of the zizmorcore/zizmor-action release you adopt, with the
-      # tag in a comment.
+      # template injection, persisted credentials).
       - name: zizmor
-        uses: zizmorcore/zizmor-action@<pin-me> # vX.Y.Z
+        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
         with:
           advanced-security: false # print findings; no SARIF upload
 
