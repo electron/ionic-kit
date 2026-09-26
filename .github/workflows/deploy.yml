@@ -28,15 +28,10 @@ on:
         type: string
         default: ''
       dockerfile:
-        description: Path to the Dockerfile, relative to `context`.
+        description: Path to the Dockerfile, relative to the repo root (the build context).
         required: false
         type: string
         default: ./Dockerfile
-      context:
-        description: Docker build context.
-        required: false
-        type: string
-        default: .
       platforms:
         description: buildx target platforms.
         required: false
@@ -105,7 +100,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294
         with:
-          context: ${{ inputs.context }}
+          context: .
           file: ${{ inputs.dockerfile }}
           platforms: ${{ inputs.platforms }}
           push: true
