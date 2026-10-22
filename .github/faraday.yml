@@ -1,0 +1,17 @@
+# faraday trust configuration for electron/ionic-kit.
+# See: https://github.com/electron/faraday
+
+# A passing Claude Code Review on the head commit counts as one approval.
+trust-claude-code-review: true
+
+# One human + Claude: a passing Claude Code Review plus an approval of the
+# head commit from one of these infra WG members passes the check.
+1h:
+  - login: MarshallOfSound
+    id: 6634592
+  - login: codebytere
+    id: 2036040
+  - login: jkleinsc
+    id: 609052
+  - login: VerteDinde
+    id: 4624411
