@@ -5,7 +5,8 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
-  - ingress.yaml
+  - httproute.yaml
+  - backendtrafficpolicy.yaml
 labels:
   - pairs:
       app.kubernetes.io/managed-by: argocd

@@ -9,11 +9,11 @@ replicas:
     count: 1
 patches:
   - target:
-      kind: Ingress
+      kind: HTTPRoute
       name: server
     patch: |-
       - op: replace
-        path: /spec/rules/0/host
+        path: /spec/hostnames/0
         value: my-app.electronjs.org
   # Optional: a health endpoint other than /healthz, plain (non-secret) env
   # vars and resource limits. Delete whatever you don't need.

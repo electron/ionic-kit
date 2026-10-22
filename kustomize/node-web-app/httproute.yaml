@@ -1,0 +1,29 @@
+# Route on the shared ionic-platform Gateway (Envoy Gateway). The listener is
+# picked by hostname, so no sectionName.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: server
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: ionic-platform
+      namespace: envoy-gateway-system
+  hostnames:
+    # Replaced by the app's prod overlay.
+    - PLACEHOLDER_HOST
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: server
+          port: 80
+      # Envoy's default is a 15s total, which would cut off streams and
+      # downloads. ingress-nginx only enforced 60s between reads, so the total
+      # is disabled here ("0s" turns Envoy's route timeout off) and
+      # backendtrafficpolicy.yaml applies the same 60s idle limit instead.
+      timeouts:
+        request: 0s

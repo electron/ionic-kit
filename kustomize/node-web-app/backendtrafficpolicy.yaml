@@ -1,0 +1,24 @@
+# Per-route on purpose: a Gateway-targeted BackendTrafficPolicy is not
+# reliably enforced on routes (envoyproxy/gateway#9513), and a route-targeted
+# one replaces the Gateway's rather than merging with it, so the Gateway's
+# 60s stream idle limit is restated here.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: server
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: server
+  # Envoy has no body limit of its own. 1 MiB is ingress-nginx's old default
+  # (client_max_body_size); Envoy buffers up to it and answers 413 above it.
+  requestBuffer:
+    limit: 1Mi
+  timeout:
+    http:
+      streamIdleTimeout: 60s
+      # Node closes idle keep-alive connections after 5s (keepAliveTimeout).
+      # Envoy would otherwise reuse one the server had just closed and fail
+      # that request with a 503, so close them from Envoy's side first.
+      connectionIdleTimeout: 4s

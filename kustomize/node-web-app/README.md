@@ -1,12 +1,13 @@
 # node-web-app
 
-A `Deployment`, `Service` and `Ingress` for an HTTP service listening on
-`$PORT` (8080).
+A `Deployment`, `Service`, `HTTPRoute` and `BackendTrafficPolicy` for an HTTP
+service listening on `$PORT` (8080). The route attaches to the shared
+`ionic-platform` Gateway (Envoy Gateway).
 
-Everything is named `server`: the Deployment, Service, Ingress, ServiceAccount
-and the `server-secrets` Secret. That matches the `components = { server = … }`
-entry in `electron/infra`, which provisions the ServiceAccount and the
-ExternalSecret under those names.
+Everything is named `server`: the Deployment, Service, HTTPRoute,
+BackendTrafficPolicy, ServiceAccount and the `server-secrets` Secret. That
+matches the `components = { server = … }` entry in `electron/infra`, which
+provisions the ServiceAccount and the ExternalSecret under those names.
 
 ## Overlay contract
 
@@ -23,7 +24,7 @@ Your overlays must set:
 | --- | --- |
 | Namespace | `namespace: <app>` |
 | Image | `images: [{ name: electronionicplatform.azurecr.io/PLACEHOLDER_APP, newName: electronionicplatform.azurecr.io/<app>, newTag: main }]` |
-| Hostname | JSON patch on `Ingress/server`: replace `/spec/rules/0/host` |
+| Hostname | JSON patch on `HTTPRoute/server`: replace `/spec/hostnames/0` |
 | `part-of` label | `labels: [{ pairs: { app.kubernetes.io/part-of: <app> }, includeTemplates: true }]` |
 
 Optional settings. Apart from replicas, these are JSON patches on
@@ -46,3 +47,6 @@ Optional settings. Apart from replicas, these are JSON patches on
 * No service-account token, no capabilities, uid/gid 1000, `RuntimeDefault` seccomp.
   The cluster enforces these through Azure Policy, so an image that needs root
   won't run.
+* Requests capped at 1 MiB of body, and cut off after 60s without any data
+  flowing (as ingress-nginx did) but with no cap on total duration
+  (`httproute.yaml`, `backendtrafficpolicy.yaml`).

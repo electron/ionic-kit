@@ -33,7 +33,7 @@ kit upgrade goes through the app repo's normal review.
 
 | Here | `electron/infra` (wg-infra) | App repo |
 | --- | --- | --- |
-| Reusable deploy workflow | Namespace, ServiceAccount, ExternalSecret `server-secrets`, `origin-tls` | `Dockerfile` |
+| Reusable deploy workflow | Namespace, ServiceAccount, ExternalSecret `server-secrets` | `Dockerfile` |
 | kustomize bases (`node-web-app`, `cronjob`) | Key Vault + secrets, CI-push identity, ArgoCD project/app | `deploy/` overlays |
 | Templates | Repo secrets/variables, Cloudflare DNS, migration runbook | Caller workflow |
 
@@ -60,7 +60,7 @@ kit upgrade goes through the app repo's normal review.
 ```
 .github/workflows/deploy.yml   reusable workflow (workflow_call)
 .github/workflows/ci.yml       this repo's own checks
-kustomize/node-web-app/        remote base: Deployment + Service + Ingress
+kustomize/node-web-app/        remote base: Deployment + Service + HTTPRoute
 kustomize/cronjob/             remote base: Heroku Scheduler replacement
 kustomize/examples/            local-path overlay used by CI
 templates/                     files an app copies
