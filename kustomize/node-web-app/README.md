@@ -47,5 +47,6 @@ Optional settings. Apart from replicas, these are JSON patches on
 * No service-account token, no capabilities, uid/gid 1000, `RuntimeDefault` seccomp.
   The cluster enforces these through Azure Policy, so an image that needs root
   won't run.
-* Requests capped at 1 MiB of body and 60s in total, as ingress-nginx did
+* Requests capped at 1 MiB of body, and cut off after 60s without any data
+  flowing (as ingress-nginx did) but with no cap on total duration
   (`httproute.yaml`, `backendtrafficpolicy.yaml`).

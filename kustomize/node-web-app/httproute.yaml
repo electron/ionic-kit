@@ -21,6 +21,9 @@ spec:
       backendRefs:
         - name: server
           port: 80
-      # Envoy's default is a 15s total; ingress-nginx allowed 60s.
+      # Envoy's default is a 15s total, which would cut off streams and
+      # downloads. ingress-nginx only enforced 60s between reads, so the total
+      # is disabled here ("0s" turns Envoy's route timeout off) and
+      # backendtrafficpolicy.yaml applies the same 60s idle limit instead.
       timeouts:
-        request: 60s
+        request: 0s
