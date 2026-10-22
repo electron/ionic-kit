@@ -11,5 +11,5 @@ patches:
         path: /spec/schedule
         value: "0 6 * * *"
       - op: replace
-        path: /spec/jobTemplate/spec/template/spec/containers/0/command
+        path: /spec/jobTemplate/spec/template/spec/containers/0/args
         value: ["node", "lib/nightly.js"]

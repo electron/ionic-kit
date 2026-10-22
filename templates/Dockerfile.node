@@ -23,9 +23,9 @@ WORKDIR /app
 # root's $HOME, so a `yarn ...` CMD starts as uid 1000 without fetching Yarn
 # from repo.yarnpkg.com on every pod start.
 ENV COREPACK_HOME=/usr/local/share/corepack
-# tzdata is only needed if the app sets TZ. Add `git` here if the app shells
-# out to it.
-RUN apk add --no-cache tzdata \
+# tini: see ENTRYPOINT. tzdata is only needed if the app sets TZ. Add `git`
+# here if the app shells out to it.
+RUN apk add --no-cache tini tzdata \
  && corepack enable
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn/ ./.yarn/
@@ -45,4 +45,9 @@ EXPOSE 8080
 # No HEALTHCHECK: Kubernetes probes /healthz instead (the path can be changed
 # in the overlay). For probot apps, use
 # CMD ["yarn", "probot", "run", "./lib/index.js"]; probot reads PORT.
+# tini runs as PID 1 and forwards SIGTERM to the app. Node (and probot) install
+# no SIGTERM handler by default, so without it the kernel ignores the signal
+# and every pod waits out the 30s grace period before being SIGKILLed. Keep it
+# even if the app adds its own handler.
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "lib/index.js"]

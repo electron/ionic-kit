@@ -66,6 +66,16 @@ spec:
             httpGet:
               path: /healthz
               port: http
+          lifecycle:
+            # Keep serving for a few seconds after the pod starts terminating,
+            # so Envoy Gateway stops routing to it before the app gets SIGTERM
+            # (tini forwards it and Node exits at once). Uses the kubelet's
+            # built-in sleep action (GA in Kubernetes 1.34), so the image
+            # needs no `sleep` binary. Counts against the default 30s
+            # terminationGracePeriodSeconds.
+            preStop:
+              sleep:
+                seconds: 5
       volumes:
         - name: tmp
           emptyDir: {}
