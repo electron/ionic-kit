@@ -17,9 +17,9 @@ images:
     newTag: main
 patches:
   - target:
-      kind: Ingress
+      kind: HTTPRoute
       name: server
     patch: |-
       - op: replace
-        path: /spec/rules/0/host
+        path: /spec/hostnames/0
         value: example.electronjs.org
