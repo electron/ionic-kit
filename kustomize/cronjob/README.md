@@ -1,6 +1,6 @@
 # cronjob
 
-A `CronJob` that runs the app's own image with a different `command`. Each one
+A `CronJob` that runs the app's own image with different `args`. Each one
 replaces a single Heroku Scheduler entry. It uses the same security context,
 ServiceAccount and `server-secrets` as `node-web-app`, so the job sees the
 same env vars as the web process.
@@ -30,7 +30,7 @@ patches:
         path: /spec/schedule
         value: "*/20 * * * *"
       - op: replace
-        path: /spec/jobTemplate/spec/template/spec/containers/0/command
+        path: /spec/jobTemplate/spec/template/spec/containers/0/args
         value: ["node", "lib/permissions/run.js"]
 ```
 
@@ -39,5 +39,9 @@ namespace and the `part-of` label, and those apply to the CronJob too.
 
 The base sets `timeZone` to UTC. Heroku Scheduler also uses UTC, so schedules
 carry over unchanged. Dead-man-snitch style `&& curl …` suffixes become
-`command: ["sh", "-c", "node lib/x.js && curl …"]`; the Node image includes
+`args: ["sh", "-c", "node lib/x.js && curl …"]`; the Node image includes
 `sh`.
+
+Patch `args`, not `command`. The Node image's ENTRYPOINT is tini, and setting
+`command` replaces the ENTRYPOINT, so the job would run without tini as PID 1
+and wouldn't stop cleanly on SIGTERM.

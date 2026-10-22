@@ -38,8 +38,10 @@ spec:
             - name: cron
               # Same image as the web Deployment; renamed by the app's deploy/base.
               image: electronionicplatform.azurecr.io/PLACEHOLDER_APP:latest
-              # Replaced by the overlay with the Heroku Scheduler command.
-              command: ["node", "lib/cron.js"]
+              # Replaced by the overlay with the Heroku Scheduler command. Set
+              # as `args`, not `command`: `command` would replace the image's
+              # ENTRYPOINT, so tini wouldn't run as PID 1.
+              args: ["node", "lib/cron.js"]
               envFrom:
                 - secretRef:
                     name: server-secrets
